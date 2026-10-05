@@ -1,0 +1,72 @@
+services:
+  db:
+    # Uses a lightweight version of Postgres 16 to keep the image size small
+    image: postgres:16-alpine
+    # Ensures the database restarts if it crashes or if the computer reboots
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      # These use variables from a .env file, with "admin/password123" as fallbacks
+      POSTGRES_USER: ${DB_USER:-admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password123}
+      POSTGRES_DB: ${DB_NAME:-central_db}
+    healthcheck:
+      # Pings the DB every 5 seconds to make sure it's actually ready to take connections
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-admin} -d ${DB_NAME:-central_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      # Keeps the data safe in a named volume so it doesn't disappear when the container stops
+      - postgres_data:/var/lib/postgresql/data
+
+  minio:
+    # MinIO: object storage compatible with AWS S3
+    image: minio/minio:latest
+    restart: always
+    command: server /data --console-address ":9001" --address ":9000"
+    ports:
+      - "9000:9000" # API Port
+      - "9001:9001" # Web Console Port
+    volumes:
+      # Keeps the MinIO data safe in a named volume
+      - minio_data:/data
+    environment:
+      # These use variables from a .env file, with fallbacks
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password123}
+    healthcheck:
+      # Checks if MinIO is ready to serve requests; optional so app still starts if this fails
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  app:
+    build: 
+      context: .
+      dockerfile: ./Dockerfile
+    working_dir: /app
+    volumes:
+      # Syncs your local folder to the container so code changes show up instantly
+      - .:/app:cached
+    ports:
+      - "8501:8501"
+    environment:
+      # The connection string the app uses to talk to the 'db' service above
+      - DATABASE_URL=postgresql://${DB_USER:-admin}:${DB_PASSWORD:-password123}@db:5432/${DB_NAME:-central_db}
+    depends_on:
+      db:
+        # Prevents the app from starting until the database healthcheck (above) passes
+        condition: service_healthy
+      minio:
+        # Waits for MinIO to become healthy before starting the app
+        condition: service_healthy
+
+volumes:
+  # Defines the storage space for the database files
+  postgres_data:
+  # Defines the storage space for MinIO files
+  minio_data:

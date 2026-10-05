@@ -1,0 +1,10 @@
+[theme]
+base = "dark"
+backgroundColor = "#0168FF"
+primaryColor = "forestGreen"
+linkColor = "darkOrchid"
+
+[theme.sidebar]
+primaryColor = "darkGoldrod"
+backgroundColor = "#e86100"
+textColor = "#ffffff"

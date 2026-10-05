@@ -1,0 +1,60 @@
+{
+  "name": "Full Stack Monorepo",
+  // Tells VS Code to use the existing Docker setup instead of creating a new one
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "app",
+  "overrideCommand": true,
+  "workspaceFolder": "/app",
+  "features": {
+    // Allows you to run Docker commands (like building images) inside this container
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "moby": false
+    }
+  },
+  // Lists the ports we want VS Code to watch for
+  "forwardPorts": [5432, 8501, 9000, 9001],
+  "portsAttributes": {
+    "5432": { 
+        "label": "PostgreSQL", 
+        // Database runs in the background; don't pop up a notification for it
+        "onAutoForward": "silent" 
+    },
+    "8501": { 
+        "label": "Streamlit App", 
+        // Show a "Click to Open" popup when the web interface is ready
+        "onAutoForward": "notify", 
+        "protocol": "http",
+        "elevateIfNeeded": true
+    },
+    "9000": {
+        "label": "MinIO API",
+        "onAutoForward": "silent"
+    },
+    "9001": {
+        "label": "MinIO Console",
+        "onAutoForward": "notify",
+        "protocol": "http",
+        "elevateIfNeeded": true
+    }
+  },
+  // Gives the 'vscode' user permission to edit files and stops Git from erroring over file ownership
+  "postCreateCommand": "sudo chown -R vscode:vscode /app && git config --global --add safe.directory /app",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.cwd": "/app",
+        // Tells VS Code exactly which Python version to use for its tools
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "ports.onAutoForward": "notify"
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-azuretools.vscode-docker",
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-pg"
+      ]
+    }
+  },
+  // Run as a regular user instead of 'root' for better security
+  "remoteUser": "vscode"
+}

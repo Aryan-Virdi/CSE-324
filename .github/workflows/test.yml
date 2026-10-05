@@ -1,0 +1,92 @@
+name: Test
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  quality-check:
+    runs-on: arc-runner-cse120
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      minio:
+        image: minio/minio:latest
+        env:
+          MINIO_ROOT_USER: ${{ secrets.MINIO_ROOT_USER }}
+          MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_ROOT_PASSWORD }}
+        ports:
+          - 9000:9000
+          - 9001:9001
+        options: >-
+          --health-cmd "curl -f http://localhost:9000/minio/health/ready || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        # start MinIO server (console on 9001)
+        command: server /data --console-address ":9001"
+
+    env:
+      API_KEY: ${{ secrets.API_KEY }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      DB_NAME: ${{ secrets.DB_NAME }}
+      DB_USER: ${{ secrets.DB_USER }}
+      DATBASE_URL: postgresql://user:password@localhost:5432/test_db
+      MINIO_ROOT_USER: ${{ secrets.MINIO_ROOT_USER }}
+      MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_ROOT_PASSWORD }}
+      # Make the MinIO service reachable under the same hostname the tests expect
+      EXTERNAL_ENDPOINT: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ROOT_USER }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_ROOT_PASSWORD }}
+      # Optional helper URL consumed by some scripts (removed; not used)
+      
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff mypy pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Map service hostnames to localhost
+        run: |
+          echo "127.0.0.1 minio" | sudo tee -a /etc/hosts
+          # also map postgres service name if any tests expect 'db'
+          echo "127.0.0.1 db" | sudo tee -a /etc/hosts
+
+      - name: Run Tests
+        env:
+          # If you have this in GitHub Secrets:
+          API_KEY: ${{ secrets.API_KEY }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DATABASE_URL: postgresql://user:password@localhost:5432/test_db
+          # Align test env with service hostname used in tests
+          EXTERNAL_ENDPOINT: http://minio:9000
+          AWS_ACCESS_KEY_ID: ${{ secrets.MINIO_ROOT_USER }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.MINIO_ROOT_PASSWORD }}
+          MINIO_ACCESS_KEY: ${{ secrets.MINIO_ROOT_USER }}
+          MINIO_SECRET_KEY: ${{ secrets.MINIO_ROOT_PASSWORD }}
+        run: python -m pytest
